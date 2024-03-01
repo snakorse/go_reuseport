@@ -1,3 +1,4 @@
+//go:build linux || darwin || dragonfly || freebsd || netbsd || openbsd
 // +build linux darwin dragonfly freebsd netbsd openbsd
 
 // Copyright (C) 2017 Max Riveiro
@@ -13,6 +14,7 @@ import (
 	"net"
 	"os"
 	"syscall"
+	_ "unsafe"
 )
 
 var (
@@ -70,10 +72,30 @@ func getTCPSockaddr(proto, addr string) (sa syscall.Sockaddr, soType int, err er
 	return nil, -1, errUnsupportedProtocol
 }
 
+//go:linkname supportsIPv4map net.supportsIPv4map
+func supportsIPv4map() bool
+
+//go:linkname supportsIPv4 net.supportsIPv4
+func supportsIPv4() bool
+
+//go:linkname supportsIPv6 net.supportsIPv6
+func supportsIPv6() bool
+
+func isWildcardAddr(a *net.TCPAddr) bool {
+	if a == nil || a.IP == nil {
+		return true
+	}
+	return a.IP.IsUnspecified()
+}
+
 func determineTCPProto(proto string, ip *net.TCPAddr) (string, error) {
 	// If the protocol is set to "tcp", we try to determine the actual protocol
 	// version from the size of the resolved IP address. Otherwise, we simple use
 	// the protcol given to us by the caller.
+
+	if isWildcardAddr(ip) && (supportsIPv4map() || !supportsIPv4()) {
+		return "tcp6", nil
+	}
 
 	if ip.IP.To4() != nil {
 		return "tcp4", nil
